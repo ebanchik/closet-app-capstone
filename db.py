@@ -97,3 +97,17 @@ def items_all():
       """
   ).fetchall()
   return [dict(row) for row in rows]
+
+
+def items_create(name, brand, size, color, fit, category_id):
+    conn = connect_to_db()
+    row = conn.execute(
+        """
+        INSERT INTO items (name, brand, size, color, fit, category_id)
+        VALUES (?, ?, ?, ?, ?, ?)
+        RETURNING *
+        """,
+        (name, brand, size, color, fit, category_id),
+    ).fetchone()
+    conn.commit()
+    return dict(row)
