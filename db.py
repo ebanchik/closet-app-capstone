@@ -87,7 +87,7 @@ def initial_setup():
 if __name__ == "__main__":
     initial_setup()
 
-
+############################### ITEMS #########################
 
 def items_all():
   conn = connect_to_db()
@@ -110,4 +110,15 @@ def items_create(name, brand, size, color, fit, category_id):
         (name, brand, size, color, fit, category_id),
     ).fetchone()
     conn.commit()
+    return dict(row)
+
+def items_find_by_id(id):
+    conn = connect_to_db()
+    row = conn.execute(
+        """
+        SELECT * FROM items
+        WHERE id = ?
+        """,
+        id,
+    ).fetchone()
     return dict(row)
