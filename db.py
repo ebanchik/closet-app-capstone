@@ -86,3 +86,14 @@ def initial_setup():
 
 if __name__ == "__main__":
     initial_setup()
+
+
+
+def items_all():
+  conn = connect_to_db()
+  rows = conn.execute(
+      """
+      SELECT * FROM items
+      """
+  ).fetchall()
+  return [dict(row) for row in rows]
