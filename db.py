@@ -135,3 +135,15 @@ def items_update_by_id(id, name, brand, size, color, fit, category_id):
     ).fetchone()
     conn.commit()
     return dict(row)
+
+def items_destroy_by_id(id):
+    conn = connect_to_db()
+    row = conn.execute(
+        """
+        DELETE from items
+        WHERE id = ?
+        """,
+        id,
+    )
+    conn.commit()
+    return {"message": "Photo destroyed successfully"}

@@ -38,3 +38,7 @@ def update(id):
     fit = request.form.get("fit")
     category_id = request.form.get("category_id")
     return db.items_update_by_id(id, name, brand, size, color, fit, category_id)
+
+@app.route("/items/<id>.json", methods=["DELETE"])
+def destroy(id):
+    return db.items_destroy_by_id(id)
