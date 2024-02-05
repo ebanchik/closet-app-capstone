@@ -122,3 +122,16 @@ def items_find_by_id(id):
         id,
     ).fetchone()
     return dict(row)
+
+def items_update_by_id(id, name, brand, size, color, fit, category_id):
+    conn = connect_to_db()
+    row = conn.execute(
+        """
+        UPDATE items SET name = ?, brand = ?, size = ?, color = ?, fit = ?, category_id = ? 
+        WHERE id = ?
+        RETURNING *
+        """,
+        (name, brand, size, color, fit, category_id, id),
+    ).fetchone()
+    conn.commit()
+    return dict(row)
