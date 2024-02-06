@@ -22,6 +22,11 @@ def initial_setup():
     )
     conn.execute(
         """
+        DROP TABLE IF EXISTS images;
+        """
+    )
+    conn.execute(
+        """
         CREATE TABLE categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_name TEXT UNIQUE NOT NULL
@@ -51,6 +56,18 @@ def initial_setup():
 #     );
 #     """
 # )
+    
+    conn.execute(
+        """
+        CREATE TABLE images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            img_url TEXT,
+            item_id INT,
+            FOREIGN KEY (item_id) REFERENCES items (id)
+        );
+        """
+    )
+    
     conn.commit()
     print("Tables created successfully")
 
@@ -87,6 +104,19 @@ def initial_setup():
         VALUES (?,?,?,?,?,?)
         """,
         items_seed_data,
+    )
+    conn.commit()
+    print("Seed data created successfully")
+    
+    images_seed_data = [
+        ("https://www.birkenstock.com/on/demandware.static/-/Sites-master-catalog/default/dwb9806ae3/560771/560771_pair.jpg", 2),
+    ]
+    conn.executemany(
+        """
+        INSERT INTO images (img_url, item_id)
+        VALUES (?,?)
+        """,
+        images_seed_data,
     )
     conn.commit()
     print("Seed data created successfully")
@@ -181,6 +211,19 @@ def items_destroy_by_id(id):
     )
     conn.commit()
     return {"message": "Item destroyed successfully"}
+
+def get_item_with_category(item_id):
+    conn = connect_to_db()
+    row = conn.execute(
+        """
+        SELECT items.*, categories.category_name
+        FROM items
+        JOIN categories ON items.category_id = categories.id
+        WHERE items.id = ?
+        """,
+        (item_id,),
+    ).fetchone()
+    return dict(row) if row else None
 
 
 ############################### CATEGORIES #########################
@@ -290,3 +333,28 @@ def hash_password(password):
 
 def check_password(password, hashed_password):
     return check_password_hash(hashed_password, password)
+
+
+############################### IMAGES #########################
+
+def images_all():
+  conn = connect_to_db()
+  rows = conn.execute(
+      """
+      SELECT * FROM images
+      """
+  ).fetchall()
+  return [dict(row) for row in rows]
+
+def images_create(img_url, item_id):
+    conn = connect_to_db()
+    row = conn.execute(
+        """
+        INSERT INTO images (img_url, item_id)
+        VALUES (?, ?)
+        RETURNING *
+        """,
+        (img_url, item_id),
+    ).fetchone()
+    conn.commit()
+    return dict(row)

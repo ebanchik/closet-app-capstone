@@ -1,4 +1,5 @@
 import db
+from db import connect_to_db
 from flask import Flask, request, jsonify, make_response, render_template
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from db import check_password
@@ -25,10 +26,28 @@ def home():
 @app.route("/items.json", methods=["GET"])
 def items_index():
     try:
-        items_data = db.items_all()
+        items_data = []
+        for item in db.items_all():
+            item_with_category = db.get_item_with_category(item["id"])
+            if item_with_category:
+                items_data.append(item_with_category)
         return jsonify(items_data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+    
+def items_all_with_category():
+    conn = connect_to_db()
+    rows = conn.execute(
+        """
+        SELECT items.id, items.name, items.brand, items.size, items.color, items.fit, items.category_id, categories.category_name
+        FROM items
+        LEFT JOIN categories ON items.category_id = categories.id
+        """
+    ).fetchall()
+    return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], 
+             "color": row["color"], "fit": row["fit"], "category_id": row["category_id"], 
+             "category_name": row["category_name"]} for row in rows]
 
 
 @app.route("/items.json", methods=["POST"])
@@ -184,3 +203,15 @@ def login():
 def logout():
     logout_user()
     return {"message": "Logout successful"}
+
+############################# IMAGES ROUTES ######################
+
+@app.route("/images.json")
+def image_index():
+    return db.images_all()
+
+@app.route("/images.json", methods=["POST"])
+def images_create():
+    image_url = request.form.get("image_url")
+    item_id = request.form.get("item_id")
+    return db.images_create(image_url, item_id)
