@@ -67,6 +67,8 @@ def initial_setup():
         );
         """
     )
+
+    
     
     conn.commit()
     print("Tables created successfully")
@@ -154,13 +156,19 @@ if __name__ == "__main__":
 ############################### ITEMS #########################
 
 def items_all():
-  conn = connect_to_db()
-  rows = conn.execute(
-      """
-      SELECT * FROM items
-      """
-  ).fetchall()
-  return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], "color": row["color"], "fit": row["fit"], "category_id": row["category_id"]} for row in rows]
+    conn = connect_to_db()
+    rows = conn.execute(
+        """
+        SELECT items.id, items.name, items.brand, items.size, items.color, items.fit, items.category_id, images.img_url, categories.category_name
+        FROM items
+        LEFT JOIN images ON items.id = images.item_id
+        LEFT JOIN categories ON items.category_id = categories.id
+        """
+    ).fetchall()
+    return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], 
+             "color": row["color"], "fit": row["fit"], "category_id": row["category_id"], 
+             "category_name": row["category_name"], "img_url": row["img_url"]} for row in rows]
+
 
 
 def items_create(name, brand, size, color, fit, category_id):
@@ -212,18 +220,27 @@ def items_destroy_by_id(id):
     conn.commit()
     return {"message": "Item destroyed successfully"}
 
-def get_item_with_category(item_id):
+def get_item_with_category_and_images(item_id):
     conn = connect_to_db()
-    row = conn.execute(
+    cursor = conn.execute(
         """
-        SELECT items.*, categories.category_name
+        SELECT items.*, categories.category_name, GROUP_CONCAT(images.img_url) AS image_urls
         FROM items
         JOIN categories ON items.category_id = categories.id
+        LEFT JOIN images ON items.id = images.item_id
         WHERE items.id = ?
+        GROUP BY items.id
         """,
         (item_id,),
-    ).fetchone()
-    return dict(row) if row else None
+    )
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        item_with_images = dict(row)
+        item_with_images["image_urls"] = item_with_images["image_urls"].split(',') if item_with_images["image_urls"] else []
+        return item_with_images
+    else:
+        return None
 
 
 ############################### CATEGORIES #########################
@@ -358,3 +375,17 @@ def images_create(img_url, item_id):
     ).fetchone()
     conn.commit()
     return dict(row)
+
+def images_destroy_by_id(id):
+    conn = connect_to_db()
+    row = conn.execute(
+        """
+        DELETE from images
+        WHERE id = ?
+        """,
+        (id,)
+    )
+    conn.commit()
+    return {"message": "Item destroyed successfully"}
+
+
