@@ -34,7 +34,7 @@ def initial_setup():
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT,
           brand TEXT,
-          size INT,
+          size TEXT,
           color TEXT,
           fit TEXT,
           category_id INT,
@@ -42,15 +42,15 @@ def initial_setup():
         );
         """
     )
-    conn.execute(
-    """
-    CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL
-    );
-    """
-)
+#     conn.execute(
+#     """
+#     CREATE TABLE users (
+#         id INTEGER PRIMARY KEY AUTOINCREMENT,
+#         email TEXT UNIQUE NOT NULL,
+#         password TEXT NOT NULL
+#     );
+#     """
+# )
     conn.commit()
     print("Tables created successfully")
 
@@ -93,6 +93,30 @@ def initial_setup():
 
     conn.close()
 
+def reset_items_table():
+    conn = connect_to_db()
+    conn.execute(
+        """
+        DROP TABLE IF EXISTS items;
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            brand TEXT,
+            size TEXT,  -- Change size column to TEXT
+            color TEXT,
+            fit TEXT,
+            category_id INT,
+            FOREIGN KEY (category_id) REFERENCES categories (id)
+        );
+        """
+    )
+    conn.commit()
+    print("Items table reset successfully")
+
 
 if __name__ == "__main__":
     initial_setup()
@@ -106,7 +130,7 @@ def items_all():
       SELECT * FROM items
       """
   ).fetchall()
-  return [dict(row) for row in rows]
+  return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], "color": row["color"], "fit": row["fit"], "category_id": row["category_id"]} for row in rows]
 
 
 def items_create(name, brand, size, color, fit, category_id):
@@ -153,7 +177,7 @@ def items_destroy_by_id(id):
         DELETE from items
         WHERE id = ?
         """,
-        id,
+        (id,)
     )
     conn.commit()
     return {"message": "Item destroyed successfully"}

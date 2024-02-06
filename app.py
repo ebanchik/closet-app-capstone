@@ -10,7 +10,8 @@ app = Flask(__name__)
 secret_key = config("SECRET_KEY", default="default_secret_key")
 app.secret_key = secret_key
 
-CORS(app)
+CORS(app, supports_credentials=True, origins='http://localhost:5173')
+
 
 @app.route('/')
 def home():
@@ -21,15 +22,43 @@ def home():
 
 ############################# ITEMS ROUTES #########################
 
-@app.route("/items.json")
+@app.route("/items.json", methods=["GET"])
 def items_index():
-    return db.items_all()
+    try:
+        items_data = db.items_all()
+        return jsonify(items_data)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/items.json", methods=["POST"])
 def item_create():
-    item_name = request.form.get("item_name")
-    return db.items_create(item_name)
+  try:
+      name = request.form.get("name")
+      brand = request.form.get("brand")
+      size = request.form.get("size")
+      color = request.form.get("color")
+      fit = request.form.get("fit")
+      category_id = request.form.get("category_id")
+
+      print("Received data:")
+      print(f"Name: {name}")
+      print(f"Brand: {brand}")
+      print(f"Size: {size}")
+      print(f"Color: {color}")
+      print(f"Fit: {fit}")
+      print(f"Category ID: {category_id}")
+
+      return db.items_create(name, brand, size, color, fit, category_id)
+
+    # Process the data (for example, create a new item in the database)
+    # ...
+
+    # Return a response (you can customize this based on your needs)
+      # return jsonify({"message": "Item created successfully"})
+  except Exception as e:
+      # Handle exceptions (e.g., invalid form data)
+      return jsonify({"error": str(e)}), 400
 
 @app.route("/items/<id>.json")
 def item_show(id):
