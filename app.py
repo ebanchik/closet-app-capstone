@@ -27,8 +27,11 @@ def home():
 def items_index():
     try:
         items_data = []
+        # db.items_all()
         for item in db.items_all():
             item_data = db.get_item_with_category_and_images(item["id"])
+            # print(item_data)
+            # print(item)
             if item_data:
                 items_data.append(item_data)
         return jsonify(items_data)
@@ -199,9 +202,34 @@ def image_index():
 
 @app.route("/images.json", methods=["POST"])
 def images_create():
-    image_url = request.form.get("image_url")
+    # Get the image URLs from the request
+    image_urls = request.form.getlist("image_url")
     item_id = request.form.get("item_id")
-    return db.images_create(image_url, item_id)
+
+    # Initialize a list to store the results of the image insertions
+    results = []
+
+    # Connect to the database
+    conn = connect_to_db()
+
+    # Loop through the image URLs and insert each one into the database
+    for img_url in image_urls:
+        row = conn.execute(
+            """
+            INSERT INTO images (img_url, item_id)
+            VALUES (?, ?)
+            RETURNING *
+            """,
+            (img_url, item_id),
+        ).fetchone()
+        results.append(dict(row))
+
+    # Commit the changes and close the connection
+    conn.commit()
+    conn.close()
+
+    # Return the results of the image insertions
+    return jsonify(results)
 
 @app.route("/images/<id>.json", methods=["DELETE"])
 def image_destroy(id):

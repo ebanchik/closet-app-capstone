@@ -159,15 +159,18 @@ def items_all():
     conn = connect_to_db()
     rows = conn.execute(
         """
-        SELECT items.id, items.name, items.brand, items.size, items.color, items.fit, items.category_id, images.img_url, categories.category_name
+        SELECT items.id, items.name, items.brand, items.size, items.color, items.fit, items.category_id
         FROM items
-        LEFT JOIN images ON items.id = images.item_id
-        LEFT JOIN categories ON items.category_id = categories.id
         """
     ).fetchall()
+    print(rows[0]["id"])
+    print(rows[1]["id"])
+    print(rows[2]["id"])
+    print(rows[3]["id"])
     return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], 
              "color": row["color"], "fit": row["fit"], "category_id": row["category_id"], 
-             "category_name": row["category_name"], "img_url": row["img_url"]} for row in rows]
+             } for row in rows]
+    # return []
 
 
 
