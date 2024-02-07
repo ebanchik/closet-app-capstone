@@ -1,5 +1,6 @@
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
+import logging
 
 
 def connect_to_db():
@@ -159,18 +160,13 @@ def items_all():
     conn = connect_to_db()
     rows = conn.execute(
         """
-        SELECT items.id, items.name, items.brand, items.size, items.color, items.fit, items.category_id
+        SELECT items.id, items.name, items.brand, items.size, items.color, items.fit, items.category_id, categories.category_name
         FROM items
+        LEFT JOIN categories ON items.category_id = categories.id
         """
     ).fetchall()
-    print(rows[0]["id"])
-    print(rows[1]["id"])
-    print(rows[2]["id"])
-    print(rows[3]["id"])
-    return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], 
-             "color": row["color"], "fit": row["fit"], "category_id": row["category_id"], 
-             } for row in rows]
-    # return []
+    return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], "color": row["color"], "fit": row["fit"], "category_id": row["category_id"], "category_name": row["category_name"]} for row in rows]
+
 
 
 
@@ -367,17 +363,25 @@ def images_all():
   return [dict(row) for row in rows]
 
 def images_create(img_url, item_id):
-    conn = connect_to_db()
-    row = conn.execute(
-        """
-        INSERT INTO images (img_url, item_id)
-        VALUES (?, ?)
-        RETURNING *
-        """,
-        (img_url, item_id),
-    ).fetchone()
-    conn.commit()
-    return dict(row)
+    try:
+        conn = connect_to_db()
+        cursor = conn.execute(
+            """
+            INSERT INTO images (img_url, item_id)
+            VALUES (?, ?)
+            RETURNING *
+            """,
+            (img_url, item_id),
+        )
+        inserted_row = cursor.fetchone()
+        conn.commit()
+        return dict(inserted_row) if inserted_row else None
+    except Exception as e:
+        logging.error(f"Error inserting image URL into database: {e}")
+        conn.rollback()  # Roll back the transaction in case of error
+        return None
+    finally:
+        conn.close()
 
 def images_destroy_by_id(id):
     conn = connect_to_db()
