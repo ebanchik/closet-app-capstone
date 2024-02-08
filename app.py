@@ -1,12 +1,16 @@
 import db
 from db import connect_to_db
-from flask import Flask, request, jsonify, make_response, render_template
+from flask import Flask, request, jsonify, make_response, render_template, send_from_directory
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from db import check_password
 from decouple import config
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
+import os
+import logging
 
 app = Flask(__name__)
+app.debug = True
 
 secret_key = config("SECRET_KEY", default="default_secret_key")
 app.secret_key = secret_key
@@ -42,32 +46,48 @@ def items_index():
 
 @app.route("/items.json", methods=["POST"])
 def item_create():
-  try:
-      name = request.form.get("name")
-      brand = request.form.get("brand")
-      size = request.form.get("size")
-      color = request.form.get("color")
-      fit = request.form.get("fit")
-      category_id = request.form.get("category_id")
+    try:
+        # Extract item data from the request form
+        name = request.form.get("name")
+        brand = request.form.get("brand")
+        size = request.form.get("size")
+        color = request.form.get("color")
+        fit = request.form.get("fit")
+        category_id = request.form.get("category_id")
 
-      print("Received data:")
-      print(f"Name: {name}")
-      print(f"Brand: {brand}")
-      print(f"Size: {size}")
-      print(f"Color: {color}")
-      print(f"Fit: {fit}")
-      print(f"Category ID: {category_id}")
+        image = request.files.get("image")
 
-      return db.items_create(name, brand, size, color, fit, category_id)
+        print(name)
+        print(brand)
+        print(size)
+        print(color)
+        print(fit)
+        print(category_id)
+        print(image)
 
-    # Process the data (for example, create a new item in the database)
-    # ...
+        # Get the uploaded image file from the request
 
-    # Return a response (you can customize this based on your needs)
-      # return jsonify({"message": "Item created successfully"})
-  except Exception as e:
-      # Handle exceptions (e.g., invalid form data)
-      return jsonify({"error": str(e)}), 400
+        # Ensure that all required fields are provided
+        if not (name and brand and size and color and fit and category_id and image):
+            raise ValueError("Missing required fields")
+
+        # Save the image file to a secure location
+        filename = secure_filename(image.filename)
+        filepath = os.path.join('uploads', filename)
+        image.save(filepath)
+
+        # Create the item in the database
+        item = db.items_create(name, brand, size, color, fit, category_id, image)
+
+        # If item creation was successful, associate the image with the item in the database
+        if item:
+            db.images_create(filename, item["item_id"])
+
+        return jsonify({"message": "Item created successfully"})
+    except Exception as e:
+        # Handle exceptions
+        return jsonify({"error": str(e)}),  40
+    
 
 @app.route("/items/<id>.json")
 def item_show(id):
@@ -196,41 +216,71 @@ def logout():
 
 ############################# IMAGES ROUTES ######################
 
+
+logging.basicConfig(level=logging.INFO)
+
+def allowed_file(filename):
+    """Check if the given filename has an allowed extension."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
+
 @app.route("/images.json")
 def image_index():
     return db.images_all()
 
-@app.route("/images.json", methods=["POST"])
-def images_create():
-    # Get the image URLs from the request
-    image_urls = request.form.getlist("image_url")
-    item_id = request.form.get("item_id")
-
-    # Initialize a list to store the results of the image insertions
-    results = []
-
-    # Connect to the database
-    conn = connect_to_db()
-
-    # Loop through the image URLs and insert each one into the database
-    for img_url in image_urls:
-        row = conn.execute(
+def images_create(filename, item_id):
+    try:
+        conn = connect_to_db()
+        cursor = conn.execute(
             """
-            INSERT INTO images (img_url, item_id)
-            VALUES (?, ?)
+            INSERT INTO images (filename, filepath, item_id)
+            VALUES (?, ?, ?)
             RETURNING *
             """,
-            (img_url, item_id),
-        ).fetchone()
-        results.append(dict(row))
+            (filename, os.path.join('uploads', filename), item_id),
+        )
 
-    # Commit the changes and close the connection
-    conn.commit()
+        inserted_row = cursor.fetchone()
+        conn.commit()
+        return dict(inserted_row) if inserted_row else None
+    except Exception as e:
+        logging.error(f"Error inserting image into database: {e}")
+        conn.rollback()  # Roll back the transaction in case of error
+        return None
+    finally:
+        conn.close()
+
+
+def get_item_with_category_and_images(item_id):
+    conn = connect_to_db()
+    cursor = conn.execute(
+        """
+        SELECT items.*, categories.category_name, images.filename, images.filepath
+        FROM items
+        JOIN categories ON items.category_id = categories.id
+        LEFT JOIN images ON items.id = images.item_id
+        WHERE items.id = ?
+        """,
+        (item_id,),
+    )
+    row = cursor.fetchone()
     conn.close()
+    if row:
+        item_with_images = dict(row)
+        # Remove the individual filename and filepath keys from the dictionary
+        item_with_images.pop("filename", None)
+        item_with_images.pop("filepath", None)
+        return item_with_images
+    else:
+        return None
 
-    # Return the results of the image insertions
-    return jsonify(results)
 
 @app.route("/images/<id>.json", methods=["DELETE"])
 def image_destroy(id):
     return db.images_destroy_by_id(id)
+
+@app.route('/uploads/<path:filename>')
+def serve_image(filename):
+    logging.info("Serving image: %s", filename)
+    # Assuming images are stored in a folder named 'uploads' in your project directory
+    uploads_folder = 'uploads'
+    return send_from_directory(os.path.abspath(uploads_folder), filename)

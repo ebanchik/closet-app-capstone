@@ -1,6 +1,7 @@
 import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import logging
+from werkzeug.utils import secure_filename
 
 
 def connect_to_db():
@@ -11,24 +12,14 @@ def connect_to_db():
 
 def initial_setup():
     conn = connect_to_db()
+    # conn.execute(
+    #     """
+    #     DROP TABLE IF EXISTS images
+    #     """
+    # )
     conn.execute(
         """
-        DROP TABLE IF EXISTS categories;
-        """
-    )
-    conn.execute(
-        """
-        DROP TABLE IF EXISTS items;
-        """
-    )
-    conn.execute(
-        """
-        DROP TABLE IF EXISTS images;
-        """
-    )
-    conn.execute(
-        """
-        CREATE TABLE categories (
+        CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_name TEXT UNIQUE NOT NULL
         );
@@ -36,7 +27,7 @@ def initial_setup():
     )
     conn.execute(
         """
-        CREATE TABLE items (
+        CREATE TABLE IF NOT EXISTS items (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT,
           brand TEXT,
@@ -61,11 +52,12 @@ def initial_setup():
     conn.execute(
         """
         CREATE TABLE images (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            img_url TEXT,
+           id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT,
+            filepath TEXT,
             item_id INT,
             FOREIGN KEY (item_id) REFERENCES items (id)
-        );
+      );
         """
     )
 
@@ -74,55 +66,54 @@ def initial_setup():
     conn.commit()
     print("Tables created successfully")
 
-    categories_seed_data = [
-    ("Shirts",),
-    ("Pants",),
-    ("Sweaters",),
-    ("Sweatpants",),
-    ("Shoes",),
-    ("Accessories",),
-    ("Jackets",),
-    ("Suits + Blazers",),
-    ("Sneakers",)
-    ]
+    # categories_seed_data = [
+    # ("Shirts",),
+    # ("Pants",),
+    # ("Sweaters",),
+    # ("Sweatpants",),
+    # ("Shoes",),
+    # ("Accessories",),
+    # ("Jackets",),
+    # ("Suits + Blazers",),
+    # ("Sneakers",)
+    # ]
 
-    conn.executemany(
-        """
-        INSERT INTO categories (category_name)
-        VALUES (?)
-        """,
-        categories_seed_data
-    )
-    conn.commit()
-    print("Cateogry seed data created successfully")
+    # conn.executemany(
+    #     """
+    #     INSERT INTO categories (category_name)
+    #     VALUES (?)
+    #     """,
+    #     categories_seed_data
+    # )
+    # conn.commit()
+    # print("Cateogry seed data created successfully")
 
 
 
-    items_seed_data = [
-        ("Loose-fit Jeans", "HOPE", 34, "Mid Grey Stone", "very baggy", 2),
-    ]
-    conn.executemany(
-        """
-        INSERT INTO items (name, brand, size, color, fit, category_id)
-        VALUES (?,?,?,?,?,?)
-        """,
-        items_seed_data,
-    )
-    conn.commit()
-    print("Seed data created successfully")
+    # items_seed_data = [
+    #     ("Loose-fit Jeans", "HOPE", 34, "Mid Grey Stone", "very baggy", 2),
+    # ]
+    # conn.executemany(
+    #     """
+    #     INSERT INTO items (name, brand, size, color, fit, category_id)
+    #     VALUES (?,?,?,?,?,?)
+    #     """,
+    #     items_seed_data,
+    # )
+    # conn.commit()
+    # print("Seed data created successfully")
     
-    images_seed_data = [
-        ("https://www.birkenstock.com/on/demandware.static/-/Sites-master-catalog/default/dwb9806ae3/560771/560771_pair.jpg", 2),
-    ]
-    conn.executemany(
-        """
-        INSERT INTO images (img_url, item_id)
-        VALUES (?,?)
-        """,
-        images_seed_data,
-    )
-    conn.commit()
-    print("Seed data created successfully")
+    # images_seed_data = [
+    #     ("https://www.birkenstock.com/on/demandware.static/-/Sites-master-catalog/default/dwb9806ae3/560771/560771_pair.jpg", 2),
+    # ]
+    # conn.executemany(
+    #     """
+    #     INSERT INTO images (filename, filepath, item_id) VALUES (?,?,?);"
+    #     """,
+    #     images_seed_data,
+    # )
+    # conn.commit()
+    # print("Seed data created successfully")
 
     conn.close()
 
@@ -160,28 +151,61 @@ def items_all():
     conn = connect_to_db()
     rows = conn.execute(
         """
-        SELECT items.id, items.name, items.brand, items.size, items.color, items.fit, items.category_id, categories.category_name
+        SELECT items.id, items.name, items.brand, items.size, items.color, items.fit, items.category_id, categories.category_name,
+               GROUP_CONCAT(images.filepath) AS filepaths
         FROM items
         LEFT JOIN categories ON items.category_id = categories.id
+        LEFT JOIN images ON items.id = images.item_id
+        GROUP BY items.id
         """
     ).fetchall()
-    return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], "color": row["color"], "fit": row["fit"], "category_id": row["category_id"], "category_name": row["category_name"]} for row in rows]
+    return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], "color": row["color"], "fit": row["fit"], "category_id": row["category_id"], "category_name": row["category_name"], "filepaths": row["filepaths"].split(',') if row["filepaths"] else []} for row in rows]
 
 
 
 
-def items_create(name, brand, size, color, fit, category_id):
+
+def items_create(name, brand, size, color, fit, category_id, image):
+    logging.info('Creating item with parameters: name=%s, brand=%s, size=%s, color=%s, fit=%s, category_id=%s',
+                 name, brand, size, color, fit, category_id)
+    logging.info('Incoming image file: %s', image.filename if image else 'None')
+
     conn = connect_to_db()
-    row = conn.execute(
-        """
-        INSERT INTO items (name, brand, size, color, fit, category_id)
-        VALUES (?, ?, ?, ?, ?, ?)
-        RETURNING *
-        """,
-        (name, brand, size, color, fit, category_id),
-    ).fetchone()
-    conn.commit()
-    return dict(row)
+    try:
+        # Insert item data into the items table
+        cursor = conn.execute(
+            """
+            INSERT INTO items (name, brand, size, color, fit, category_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+            RETURNING id
+            """,
+            (name, brand, size, color, fit, category_id),
+        )
+        item_id = cursor.fetchone()[0]
+
+        # Insert image data into the images table
+        cursor = conn.execute(
+            """
+            INSERT INTO images (filename, filepath, item_id)
+            VALUES (?, ?, ?)
+            RETURNING *
+            """,
+            (secure_filename(image.filename), "upload/", item_id),
+        )
+        inserted_image = cursor.fetchone()
+
+        conn.commit()
+        return {"item_id": item_id, "image": dict(inserted_image)} if inserted_image else None
+    except Exception as e:
+        # Log the full stack trace for better debugging
+        logging.exception("Error creating item: %s", e)
+        
+        # Return a more informative error message
+        return {"error": f"An error occurred while creating the item: {str(e)}"}
+    finally:
+        # Only close the connection if it's open
+        if conn:
+            conn.close()
 
 def items_find_by_id(id):
     conn = connect_to_db()
@@ -223,7 +247,7 @@ def get_item_with_category_and_images(item_id):
     conn = connect_to_db()
     cursor = conn.execute(
         """
-        SELECT items.*, categories.category_name, GROUP_CONCAT(images.img_url) AS image_urls
+        SELECT items.*, categories.category_name, GROUP_CONCAT(images.filename) AS filenames, GROUP_CONCAT(images.filepath) AS filepaths
         FROM items
         JOIN categories ON items.category_id = categories.id
         LEFT JOIN images ON items.id = images.item_id
@@ -236,7 +260,8 @@ def get_item_with_category_and_images(item_id):
     conn.close()
     if row:
         item_with_images = dict(row)
-        item_with_images["image_urls"] = item_with_images["image_urls"].split(',') if item_with_images["image_urls"] else []
+        item_with_images["filenames"] = item_with_images["filenames"].split(',') if item_with_images["filenames"] else []
+        item_with_images["filepaths"] = item_with_images["filepaths"].split(',') if item_with_images["filepaths"] else []
         return item_with_images
     else:
         return None
@@ -362,22 +387,23 @@ def images_all():
   ).fetchall()
   return [dict(row) for row in rows]
 
-def images_create(img_url, item_id):
+def images_create(filename, filepath, item_id):
     try:
         conn = connect_to_db()
         cursor = conn.execute(
             """
-            INSERT INTO images (img_url, item_id)
-            VALUES (?, ?)
+            INSERT INTO images (filename, filepath, item_id)
+            VALUES (?, ?, ?)
             RETURNING *
             """,
-            (img_url, item_id),
+            (filename, filepath, item_id),
         )
+
         inserted_row = cursor.fetchone()
         conn.commit()
         return dict(inserted_row) if inserted_row else None
     except Exception as e:
-        logging.error(f"Error inserting image URL into database: {e}")
+        logging.error(f"Error inserting image into database: {e}")
         conn.rollback()  # Roll back the transaction in case of error
         return None
     finally:
@@ -394,5 +420,32 @@ def images_destroy_by_id(id):
     )
     conn.commit()
     return {"message": "Item destroyed successfully"}
+
+# def update_table():
+#     conn = connect_to_db()
+#     try:
+#         # Add two new columns
+#         conn.execute(
+#             """
+#             ALTER TABLE images
+#             ADD COLUMN filename TEXT,
+#             ADD COLUMN filepath TEXT;
+#             """
+#         )
+        
+#         # Drop the existing column
+#         conn.execute(
+#             """
+#             ALTER TABLE images
+#             DROP COLUMN img_url;
+#             """
+#         )
+
+#         conn.commit()
+#         print("Table updated successfully")
+#     except sqlite3.Error as e:
+#         print("Error updating table:", e)
+#     finally:
+#         conn.close()
 
 
