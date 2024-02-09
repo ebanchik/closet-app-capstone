@@ -98,7 +98,7 @@ def item_show(id):
         else:
             return jsonify({"error": "Item not found"}),  404
     except Exception as e:
-        return jsonify({"error": str(e)}),  500
+        return jsonify({"error": str(e)}),  50
 
 
 @app.route("/items/<id>.json", methods=["PATCH"])
