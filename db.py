@@ -2,6 +2,7 @@ import sqlite3
 from werkzeug.security import generate_password_hash, check_password_hash
 import logging
 from werkzeug.utils import secure_filename
+import os
 
 
 def connect_to_db():
@@ -214,22 +215,62 @@ def items_find_by_id(id):
         SELECT * FROM items
         WHERE id = ?
         """,
-        id,
+        (id,),
     ).fetchone()
     return dict(row)
 
-def items_update_by_id(id, name, brand, size, color, fit, category_id):
+def items_update_by_id(id, name, brand, size, color, fit, category_id, image):
     conn = connect_to_db()
-    row = conn.execute(
-        """
-        UPDATE items SET name = ?, brand = ?, size = ?, color = ?, fit = ?, category_id = ? 
-        WHERE id = ?
-        RETURNING *
-        """,
-        (name, brand, size, color, fit, category_id, id),
-    ).fetchone()
-    conn.commit()
-    return dict(row)
+    try:
+        # Begin a transaction
+        conn.execute("BEGIN TRANSACTION;")
+        
+        # Update item details in the items table
+        conn.execute(
+            """
+            UPDATE items 
+            SET name = ?, brand = ?, size = ?, color = ?, fit = ?, category_id = ?
+            WHERE id = ?
+            """,
+            (name, brand, size, color, fit, category_id, id),
+        )
+
+        # If a new image is provided, update or add it to the images table
+        if image:
+            filename = secure_filename(image.filename)
+            filepath = os.path.join('uploads', filename)
+            image.save(filepath)
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO images (filename, filepath, item_id)
+                VALUES (?, ?, ?)
+                """,
+                (filename, filepath, id),
+            )
+
+        # Commit the transaction
+        conn.execute("COMMIT;")
+        
+        # Fetch and return the updated item details
+        updated_row = conn.execute(
+            """
+            SELECT * FROM items
+            WHERE id = ?
+            """,
+            (id,),
+        ).fetchone()
+        
+        return dict(updated_row)
+    except Exception as e:
+        # Rollback the transaction in case of any error
+        conn.execute("ROLLBACK;")
+        # Log the error for debugging purposes
+        logging.error(f"Error updating item: {e}")
+        # Return None to indicate failure
+        return None
+    finally:
+        # Close the database connection
+        conn.close()
 
 def items_destroy_by_id(id):
     conn = connect_to_db()

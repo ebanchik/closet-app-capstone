@@ -91,18 +91,39 @@ def item_create():
 
 @app.route("/items/<id>.json")
 def item_show(id):
-    return db.items_find_by_id(id)
+    try:
+        item_data = db.get_item_with_category_and_images(id)
+        if item_data:
+            return jsonify(item_data)
+        else:
+            return jsonify({"error": "Item not found"}),  404
+    except Exception as e:
+        return jsonify({"error": str(e)}),  500
 
 
 @app.route("/items/<id>.json", methods=["PATCH"])
 def item_update(id):
-    name = request.form.get("name")
-    brand = request.form.get("brand")
-    size = request.form.get("size")
-    color = request.form.get("color")
-    fit = request.form.get("fit")
-    item_id = request.form.get("item_id")
-    return db.items_update_by_id(id, name, brand, size, color, fit, item_id)
+    try:
+        name = request.form.get("name")
+        brand = request.form.get("brand")
+        size = request.form.get("size")
+        color = request.form.get("color")
+        fit = request.form.get("fit")
+        category_id = request.form.get("category_id")
+
+        image = request.files.get("image")
+        
+        # Call the items_update_by_id function with the provided parameters
+        updated_item = db.items_update_by_id(id, name, brand, size, color, fit, category_id, image)
+        
+        if updated_item:
+            return jsonify({"message": "Item updated successfully"})
+        else:
+            return jsonify({"error": "Failed to update item"}), 500
+    except Exception as e:
+        # Handle exceptions
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route("/items/<id>.json", methods=["DELETE"])
 def item_destroy(id):
