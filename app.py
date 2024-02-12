@@ -8,6 +8,14 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
 import logging
+import jwt
+from datetime import datetime, timedelta
+from auth import get_user_id_from_jwt
+
+import importlib.metadata
+
+flask_login_version = importlib.metadata.version("Flask-Login")
+print(flask_login_version)
 
 app = Flask(__name__)
 app.debug = True
@@ -17,6 +25,17 @@ app.secret_key = secret_key
 
 CORS(app, supports_credentials=True, origins='http://localhost:5173')
 
+app.config.update({
+    'SESSION_COOKIE_DOMAIN': None,  # Set to your domain if needed
+    'SESSION_COOKIE_PATH': '/',
+    'SESSION_COOKIE_HTTPONLY': True,
+    'SESSION_COOKIE_SECURE': False,  # Set to True if using HTTPS
+    'SESSION_COOKIE_SAMESITE': 'Lax',
+})
+
+# Initialize the LoginManager
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
 
 @app.route('/')
 def home():
@@ -30,22 +49,44 @@ def home():
 @app.route("/items.json", methods=["GET"])
 def items_index():
     try:
+        # Extract JWT token from the Authorization header
+        auth_header = request.headers.get('Authorization')
+        if auth_header:
+            token = auth_header.split(" ")[1]  # Assuming Bearer token format
+        else:
+            return jsonify({"error": "Authentication token missing"}),  401
+
+        # Decode the JWT token to get the user_id
+        secret_key = app.config['SECRET_KEY']
+        decoded_token = jwt.decode(token, secret_key, algorithms=['HS256'])
+        user_id = decoded_token['user_id']
+
+        # Retrieve items associated with the user_id
         items_data = []
-        # db.items_all()
-        for item in db.items_all():
+        for item in db.items_all_for_user(user_id):
             item_data = db.get_item_with_category_and_images(item["id"])
-            # print(item_data)
-            # print(item)
             if item_data:
                 items_data.append(item_data)
+
         return jsonify(items_data)
+    except jwt.ExpiredSignatureError:
+        return jsonify({"error": "Token expired"}),  401
+    except jwt.InvalidTokenError:
+        return jsonify({"error": "Invalid token"}),  401
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
+        return jsonify({"error": str(e)}),  500
 
 @app.route("/items.json", methods=["POST"])
 def item_create():
+    
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        token = auth_header.split(" ")[1]  # Assuming Bearer token format
+    else:
+        return jsonify({"error": "Authentication token missing"}),  401
+
+    # Extract user_id from the JWT token
+    user_id = get_user_id_from_jwt(token)
     try:
         # Extract item data from the request form
         name = request.form.get("name")
@@ -77,7 +118,7 @@ def item_create():
         image.save(filepath)
 
         # Create the item in the database
-        item = db.items_create(name, brand, size, color, fit, category_id, image)
+        item = db.items_create(name, brand, size, color, fit, category_id, image, user_id)
 
         # If item creation was successful, associate the image with the item in the database
         if item:
@@ -103,6 +144,14 @@ def item_show(id):
 
 @app.route("/items/<id>.json", methods=["PATCH"])
 def item_update(id):
+    auth_header = request.headers.get('Authorization')
+    if auth_header:
+        token = auth_header.split(" ")[1]  # Assuming Bearer token format
+    else:
+        return jsonify({"error": "Authentication token missing"}),  401
+
+    # Extract user_id from the JWT token
+    user_id = get_user_id_from_jwt(token)
     try:
         name = request.form.get("name")
         brand = request.form.get("brand")
@@ -114,7 +163,7 @@ def item_update(id):
         image = request.files.get("image")
         
         # Call the items_update_by_id function with the provided parameters
-        updated_item = db.items_update_by_id(id, name, brand, size, color, fit, category_id, image)
+        updated_item = db.items_update_by_id(id, name, brand, size, color, fit, category_id, image, user_id)
         
         if updated_item:
             return jsonify({"message": "Item updated successfully"})
@@ -160,9 +209,6 @@ def category_destroy(id):
 
 ############################# USER ROUTES ######################
 
-login_manager = LoginManager(app)
-login_manager.login_view = "login"
-
 class User(UserMixin):
     def __init__(self, user_data):
         self.id = str(user_data["id"]) if user_data else None
@@ -197,6 +243,13 @@ def signup():
     db.create_user(email, password)
     return {"message": "User created successfully"}
 
+def generate_jwt_token(user_id):
+    payload = {
+        "user_id": user_id,
+        "exp": datetime.utcnow() + timedelta(days=1)  # Token expires in  1 day
+    }
+    secret_key = app.config['SECRET_KEY']
+    return jwt.encode(payload, secret_key, algorithm='HS256')
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -213,27 +266,28 @@ def login():
 
         if user and check_password(password, user["password"]):
             user_obj = User(user)
-            login_user(user_obj)
-            print(f"Current User: {current_user}")
-            response = make_response({"message": "Login successful"})
-
-            # Set the session cookie with the user's ID
-            response.headers["Set-Cookie"] = f"user_id={current_user.id}; Path=/;"
-
-            print("Headers:", response.headers)
-
-            return response
+            # login_user(user_obj)  # Comment out this line if you're using JWT
+            print(f"Current User: {user_obj}")
+            
+            token = generate_jwt_token(user_obj.id)
+            response = make_response({"message": "Login successful", "token": token})
+            print("Response headers:", dict(response.headers))
+            
+            return response  # No need to manually set the cookie
         else:
-            return {"message": "Invalid email or password"}, 401
+            return {"message": "Invalid email or password"},   401
 
     return render_template('login.html')
 
 
+
+blacklisted_tokens = set()
+
 @app.route("/logout", methods=["POST"])
-@login_required
 def logout():
-    logout_user()
-    return {"message": "Logout successful"}
+    token = request.headers.get('Authorization').split()[1]
+    blacklisted_tokens.add(token)
+    return jsonify({"message": "Logout successful"})
 
 ############################# IMAGES ROUTES ######################
 

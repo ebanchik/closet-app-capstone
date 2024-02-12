@@ -3,6 +3,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import logging
 from werkzeug.utils import secure_filename
 import os
+import jwt
+from datetime import datetime, timedelta
+from auth import get_user_id_from_jwt
 
 
 def connect_to_db():
@@ -26,20 +29,36 @@ def initial_setup():
         );
         """
     )
+    # conn.execute("ALTER TABLE items RENAME TO items_old;")
+
+# Step  2: Create a new table with the foreign key constraint
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT,
-          brand TEXT,
-          size TEXT,
-          color TEXT,
-          fit TEXT,
-          category_id INT,
-          FOREIGN KEY (category_id) REFERENCES categories (id)
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            brand TEXT,
+            size TEXT,
+            color TEXT,
+            fit TEXT,
+            category_id INT,
+            user_id INT,
+            FOREIGN KEY (category_id) REFERENCES categories (id),
+            FOREIGN KEY (user_id) REFERENCES users (id)
         );
         """
     )
+
+    # Step  3: Copy the data from the old table to the new table
+    # conn.execute(
+    #     """
+    #     INSERT INTO items (id, name, brand, size, color, fit, category_id)
+    #     SELECT id, name, brand, size, color, fit, category_id FROM items_old;
+    #     """
+    # )
+
+    # Step  4: Drop the old table
+    conn.execute("DROP TABLE items_old;")
 #     conn.execute(
 #     """
 #     CREATE TABLE users (
@@ -50,16 +69,23 @@ def initial_setup():
 #     """
 # )
     
+    # conn.execute(
+    #     """
+    #     CREATE TABLE images (
+    #        id INTEGER PRIMARY KEY AUTOINCREMENT,
+    #         filename TEXT,
+    #         filepath TEXT,
+    #         item_id INT,
+    #         FOREIGN KEY (item_id) REFERENCES items (id)
+    #   );
+    #     """
+    # )
+
     conn.execute(
-        """
-        CREATE TABLE images (
-           id INTEGER PRIMARY KEY AUTOINCREMENT,
-            filename TEXT,
-            filepath TEXT,
-            item_id INT,
-            FOREIGN KEY (item_id) REFERENCES items (id)
-      );
-        """
+      """
+      ALTER TABLE IF NOT users
+      ADD COLUMN new_column_name column_type;
+      """
     )
 
     
@@ -162,15 +188,31 @@ def items_all():
     ).fetchall()
     return [{"id": row["id"], "name": row["name"], "brand": row["brand"], "size": row["size"], "color": row["color"], "fit": row["fit"], "category_id": row["category_id"], "category_name": row["category_name"], "filepaths": row["filepaths"].split(',') if row["filepaths"] else []} for row in rows]
 
+def items_all_for_user(user_id):
+    conn = connect_to_db()
+    # Create a cursor object
+    cursor = conn.cursor()
+
+    # Write the SQL query to select items for the given user_id
+    sql = "SELECT * FROM items WHERE user_id = ?"
+
+    # Execute the query with the user_id parameter
+    cursor.execute(sql, (user_id,))
+
+    # Fetch all results and close the cursor
+    items = cursor.fetchall()
+    cursor.close()
+
+    return items
 
 
 
 
-def items_create(name, brand, size, color, fit, category_id, image):
+def items_create(name, brand, size, color, fit, category_id, image, token):
+    user_id = get_user_id_from_jwt(token)
     logging.info('Creating item with parameters: name=%s, brand=%s, size=%s, color=%s, fit=%s, category_id=%s',
                  name, brand, size, color, fit, category_id)
     logging.info('Incoming image file: %s', image.filename if image else 'None')
-
     conn = connect_to_db()
     try:
         # Insert item data into the items table
