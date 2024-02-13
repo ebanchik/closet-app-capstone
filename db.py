@@ -208,37 +208,45 @@ def items_all_for_user(user_id):
 
 
 
-def items_create(name, brand, size, color, fit, category_id, image, token):
-    user_id = get_user_id_from_jwt(token)
-    logging.info('Creating item with parameters: name=%s, brand=%s, size=%s, color=%s, fit=%s, category_id=%s',
-                 name, brand, size, color, fit, category_id)
-    logging.info('Incoming image file: %s', image.filename if image else 'None')
+def items_create(name, brand, size, color, fit, category_id, filename, filepath, user_id):
+    # Log the incoming user_id for debugging purposes
+    logging.info(f"USER ID: {user_id}")
+
     conn = connect_to_db()
+
+    # Log the creation of the item with parameters
+    logging.info('Creating item with parameters: name=%s, brand=%s, size=%s, color=%s, fit=%s, category_id=%s, user_id=%s',
+                 name, brand, size, color, fit, category_id, user_id)
+    
+    # Log the incoming image filename
+    logging.info('Incoming image file: %s', filename if filename else 'None')
+
     try:
         # Insert item data into the items table
         cursor = conn.execute(
             """
-            INSERT INTO items (name, brand, size, color, fit, category_id)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO items (name, brand, size, color, fit, category_id, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             RETURNING id
             """,
-            (name, brand, size, color, fit, category_id),
+            (name, brand, size, color, fit, category_id, user_id),
         )
         item_id = cursor.fetchone()[0]
 
-        # Insert image data into the images table
-        cursor = conn.execute(
-            """
-            INSERT INTO images (filename, filepath, item_id)
-            VALUES (?, ?, ?)
-            RETURNING *
-            """,
-            (secure_filename(image.filename), "upload/", item_id),
-        )
-        inserted_image = cursor.fetchone()
+        # If an image filename is provided, insert image data into the images table
+        if filename:
+            cursor = conn.execute(
+                """
+                INSERT INTO images (filename, filepath, item_id)
+                VALUES (?, ?, ?)
+                RETURNING *
+                """,
+                (secure_filename(filename), "upload/", item_id),
+            )
+            inserted_image = cursor.fetchone()
 
         conn.commit()
-        return {"item_id": item_id, "image": dict(inserted_image)} if inserted_image else None
+        return {"item_id": item_id, "image": dict(inserted_image)} if filename and inserted_image else {"item_id": item_id}
     except Exception as e:
         # Log the full stack trace for better debugging
         logging.exception("Error creating item: %s", e)
@@ -246,9 +254,13 @@ def items_create(name, brand, size, color, fit, category_id, image, token):
         # Return a more informative error message
         return {"error": f"An error occurred while creating the item: {str(e)}"}
     finally:
-        # Only close the connection if it's open
+        # Close the connection if it's open
         if conn:
             conn.close()
+
+
+
+
 
 def items_find_by_id(id):
     conn = connect_to_db()

@@ -11,6 +11,7 @@ import logging
 import jwt
 from datetime import datetime, timedelta
 from auth import get_user_id_from_jwt
+from dotenv import load_dotenv
 
 import importlib.metadata
 
@@ -22,6 +23,8 @@ app.debug = True
 
 secret_key = config("SECRET_KEY", default="default_secret_key")
 app.secret_key = secret_key
+
+load_dotenv()
 
 CORS(app, supports_credentials=True, origins='http://localhost:5173')
 
@@ -78,57 +81,94 @@ def items_index():
 
 @app.route("/items.json", methods=["POST"])
 def item_create():
-    
     auth_header = request.headers.get('Authorization')
     if auth_header:
-        token = auth_header.split(" ")[1]  # Assuming Bearer token format
+        if auth_header.startswith('Bearer '):
+            token = auth_header[7:]  # Remove 'Bearer ' prefix
+            print(f"Received Authorization header: {auth_header}")
+            print(f"Extracted token: {token}")
+            
+            # Call the get_user_id_from_jwt function for debugging
+            try:
+                user_id = get_user_id_from_jwt(token)
+                print(f"User ID extracted from token: {user_id}")
+                
+                # Log the token after user ID extraction
+                print(f"Token after user ID extraction: {token}")
+                
+                # Extract item data from the request form
+                name = request.form.get("name")
+                brand = request.form.get("brand")
+                size = request.form.get("size")
+                color = request.form.get("color")
+                fit = request.form.get("fit")
+                category_id = request.form.get("category_id")
+                image = request.files.get("image")
+
+                # Ensure that all required fields are provided
+                if not (name and brand and size and color and fit and category_id):
+                    raise ValueError("Missing required fields")
+
+                # Save the image file to a secure location if provided
+                if image:
+                    filename = secure_filename(image.filename)
+                    filepath = os.path.join('uploads', filename)
+                    image.save(filepath)
+                else:
+                    filename = None
+                    filepath = None
+
+                # Create the item in the database
+                print(f"Before db.items_create: {token}")  # Log the token before the function call
+                item = db.items_create(name, brand, size, color, fit, category_id, filename, filepath, user_id)
+                print(f"After db.items_create: {token}")  # Log the token after the function call
+
+                # Log the token after the item creation
+                print(f"Token after item creation: {token}")
+
+                # If item creation was successful and an image was provided, associate the image with the item in the database
+                if item and image:
+                    db.images_create(filename, item["item_id"])
+
+                # Log the token after the image creation
+                print(f"Token after image creation: {token}")
+
+                return jsonify({"message": "Item created successfully"})
+            except Exception as e:
+                # Handle exceptions
+                return jsonify({"error": str(e)}),   400
+        else:
+            return jsonify({"error": "Invalid Authorization header format"}),   401
     else:
-        return jsonify({"error": "Authentication token missing"}),  401
+        return jsonify({"error": "Authentication token missing"}),   401
 
-    # Extract user_id from the JWT token
-    user_id = get_user_id_from_jwt(token)
-    try:
-        # Extract item data from the request form
-        name = request.form.get("name")
-        brand = request.form.get("brand")
-        size = request.form.get("size")
-        color = request.form.get("color")
-        fit = request.form.get("fit")
-        category_id = request.form.get("category_id")
 
-        image = request.files.get("image")
 
-        print(name)
-        print(brand)
-        print(size)
-        print(color)
-        print(fit)
-        print(category_id)
-        print(image)
 
-        # Get the uploaded image file from the request
-
-        # Ensure that all required fields are provided
-        if not (name and brand and size and color and fit and category_id and image):
-            raise ValueError("Missing required fields")
-
-        # Save the image file to a secure location
-        filename = secure_filename(image.filename)
-        filepath = os.path.join('uploads', filename)
-        image.save(filepath)
-
-        # Create the item in the database
-        item = db.items_create(name, brand, size, color, fit, category_id, image, user_id)
-
-        # If item creation was successful, associate the image with the item in the database
-        if item:
-            db.images_create(filename, item["item_id"])
-
-        return jsonify({"message": "Item created successfully"})
-    except Exception as e:
-        # Handle exceptions
-        return jsonify({"error": str(e)}),  40
     
+
+# @app.route("/test_token", methods=["POST"])
+# def test_token():
+#     auth_header = request.headers.get('Authorization')
+#     if auth_header:
+#         if auth_header.startswith('Bearer '):
+#             token = auth_header[7:]  # Remove 'Bearer ' prefix
+#             print(f"Received Authorization header: {auth_header}")
+#             print(f"Extracted token: {token}")
+            
+#             # Call the get_user_id_from_jwt function for debugging
+#             try:
+#                 user_id = get_user_id_from_jwt(token)
+#                 print(f"User ID extracted from token: {user_id}")
+#                 return jsonify({"message": f"User ID: {user_id}"}),  200
+#             except Exception as e:
+#                 print(f"Failed to extract user ID from token: {e}")
+#                 return jsonify({"error": "Failed to extract user ID from token"}),   401
+#         else:
+#             return jsonify({"error": "Invalid Authorization header format"}),   401
+#     else:
+#         return jsonify({"error": "Authentication token missing"}),   401
+
 
 @app.route("/items/<id>.json")
 def item_show(id):
