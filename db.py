@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from auth import get_user_id_from_jwt
 
 
+
 def connect_to_db():
     conn = sqlite3.connect("database.db")
     conn.row_factory = sqlite3.Row
@@ -209,17 +210,14 @@ def items_all_for_user(user_id):
 
 
 def items_create(name, brand, size, color, fit, category_id, filename, filepath, user_id):
-    # Log the incoming user_id for debugging purposes
-    logging.info(f"USER ID: {user_id}")
+    # Log the incoming token for debugging purposes
+    logging.info('Incoming user ID: %s', user_id)
 
     conn = connect_to_db()
 
-    # Log the creation of the item with parameters
-    logging.info('Creating item with parameters: name=%s, brand=%s, size=%s, color=%s, fit=%s, category_id=%s, user_id=%s',
-                 name, brand, size, color, fit, category_id, user_id)
-    
-    # Log the incoming image filename
-    logging.info('Incoming image file: %s', filename if filename else 'None')
+    # Now use user_id and decoded_token separately without decoding again
+    logging.info('Creating item with parameters: name=%s, brand=%s, size=%s, color=%s, fit=%s, category_id=%s, user_id=%s, filename=%s, filepath=%s',
+                 name, brand, size, color, fit, category_id, user_id, filename, filepath)
 
     try:
         # Insert item data into the items table
@@ -233,20 +231,19 @@ def items_create(name, brand, size, color, fit, category_id, filename, filepath,
         )
         item_id = cursor.fetchone()[0]
 
-        # If an image filename is provided, insert image data into the images table
-        if filename:
-            cursor = conn.execute(
-                """
-                INSERT INTO images (filename, filepath, item_id)
-                VALUES (?, ?, ?)
-                RETURNING *
-                """,
-                (secure_filename(filename), "upload/", item_id),
-            )
-            inserted_image = cursor.fetchone()
+        # Insert image data into the images table
+        cursor = conn.execute(
+            """
+            INSERT INTO images (filename, filepath, item_id)
+            VALUES (?, ?, ?)
+            RETURNING *
+            """,
+            (filename, filepath, item_id),
+        )
+        inserted_image = cursor.fetchone()
 
         conn.commit()
-        return {"item_id": item_id, "image": dict(inserted_image)} if filename and inserted_image else {"item_id": item_id}
+        return {"item_id": item_id, "image": dict(inserted_image)} if inserted_image else None
     except Exception as e:
         # Log the full stack trace for better debugging
         logging.exception("Error creating item: %s", e)
@@ -254,9 +251,10 @@ def items_create(name, brand, size, color, fit, category_id, filename, filepath,
         # Return a more informative error message
         return {"error": f"An error occurred while creating the item: {str(e)}"}
     finally:
-        # Close the connection if it's open
+        # Only close the connection if it's open
         if conn:
             conn.close()
+
 
 
 
@@ -273,14 +271,14 @@ def items_find_by_id(id):
     ).fetchone()
     return dict(row)
 
-def items_update_by_id(id, name, brand, size, color, fit, category_id, image):
+def items_update_by_id(id, name, brand, size, color, fit, category_id, image,):
     conn = connect_to_db()
     try:
         # Begin a transaction
         conn.execute("BEGIN TRANSACTION;")
-        
+        print(f"data received: {image}")
         # Update item details in the items table
-        conn.execute(
+        cursor = conn.execute(
             """
             UPDATE items 
             SET name = ?, brand = ?, size = ?, color = ?, fit = ?, category_id = ?
@@ -288,6 +286,22 @@ def items_update_by_id(id, name, brand, size, color, fit, category_id, image):
             """,
             (name, brand, size, color, fit, category_id, id),
         )
+
+        affected_rows = cursor.rowcount
+        print(f"{affected_rows} rows were updated.")
+
+        # Now, retrieve the updated row
+        cursor.execute("SELECT * FROM items WHERE id = ?", (id,))
+        updated_row = cursor.fetchone()
+
+        # Print the updated row
+        if updated_row:
+            print("Updated row contents:", updated_row)
+        else:
+            print("No row found with the provided ID.")
+
+            import pdb; pdb.set_trace()
+
 
         # If a new image is provided, update or add it to the images table
         if image:

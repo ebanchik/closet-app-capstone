@@ -1,7 +1,7 @@
 import db
 from db import connect_to_db
 from flask import Flask, request, jsonify, make_response, render_template, send_from_directory
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_login import LoginManager, UserMixin, current_user
 from db import check_password
 from decouple import config
 from flask_cors import CORS
@@ -12,6 +12,10 @@ import jwt
 from datetime import datetime, timedelta
 from auth import get_user_id_from_jwt
 from dotenv import load_dotenv
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 import importlib.metadata
 
@@ -184,15 +188,19 @@ def item_show(id):
 
 @app.route("/items/<id>.json", methods=["PATCH"])
 def item_update(id):
+    logger.debug(f"Received PATCH request for item ID: {id}")
     auth_header = request.headers.get('Authorization')
     if auth_header:
         token = auth_header.split(" ")[1]  # Assuming Bearer token format
     else:
+        logger.warning("Authentication token missing")
         return jsonify({"error": "Authentication token missing"}),  401
 
     # Extract user_id from the JWT token
     user_id = get_user_id_from_jwt(token)
     try:
+        
+        logger.debug(f"Form data received: {request.form}")
         name = request.form.get("name")
         brand = request.form.get("brand")
         size = request.form.get("size")
@@ -201,16 +209,22 @@ def item_update(id):
         category_id = request.form.get("category_id")
 
         image = request.files.get("image")
+        logger.debug(f"Image file received: {image}")
+
+        logger.debug(f"Form data received after: {request.form}")
         
         # Call the items_update_by_id function with the provided parameters
-        updated_item = db.items_update_by_id(id, name, brand, size, color, fit, category_id, image, user_id)
+        updated_item = db.items_update_by_id(id, name, brand, size, color, fit, category_id, image)
         
         if updated_item:
+            logger.info(f"Item updated successfully: {updated_item}")
             return jsonify({"message": "Item updated successfully"})
         else:
+            logger.error("Failed to update item")
             return jsonify({"error": "Failed to update item"}), 500
     except Exception as e:
         # Handle exceptions
+        logger.exception("Exception occurred while updating item")
         return jsonify({"error": str(e)}), 500
 
 
