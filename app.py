@@ -30,7 +30,7 @@ app.secret_key = secret_key
 
 load_dotenv()
 
-CORS(app, supports_credentials=True, origins='http://localhost:5173')
+CORS(app, supports_credentials=True, origins='http://localhost:5173', allow_headers=["Content-Type", "Authorization"], methods=["GET", "POST", "PATCH", "DELETE"])
 
 app.config.update({
     'SESSION_COOKIE_DOMAIN': None,  # Set to your domain if needed
@@ -89,16 +89,12 @@ def item_create():
     if auth_header:
         if auth_header.startswith('Bearer '):
             token = auth_header[7:]  # Remove 'Bearer ' prefix
-            print(f"Received Authorization header: {auth_header}")
-            print(f"Extracted token: {token}")
             
             # Call the get_user_id_from_jwt function for debugging
             try:
                 user_id = get_user_id_from_jwt(token)
-                print(f"User ID extracted from token: {user_id}")
                 
                 # Log the token after user ID extraction
-                print(f"Token after user ID extraction: {token}")
                 
                 # Extract item data from the request form
                 name = request.form.get("name")
@@ -123,19 +119,10 @@ def item_create():
                     filepath = None
 
                 # Create the item in the database
-                print(f"Before db.items_create: {token}")  # Log the token before the function call
-                item = db.items_create(name, brand, size, color, fit, category_id, filename, filepath, user_id)
-                print(f"After db.items_create: {token}")  # Log the token after the function call
-
-                # Log the token after the item creation
-                print(f"Token after item creation: {token}")
-
+                db.items_create(name, brand, size, color, fit, category_id, filename, filepath, user_id)
                 # If item creation was successful and an image was provided, associate the image with the item in the database
-                if item and image:
-                    db.images_create(filename, item["item_id"])
-
-                # Log the token after the image creation
-                print(f"Token after image creation: {token}")
+                # if item and image:
+                #     db.images_create(filename, item["item_id"])
 
                 return jsonify({"message": "Item created successfully"})
             except Exception as e:
@@ -145,33 +132,6 @@ def item_create():
             return jsonify({"error": "Invalid Authorization header format"}),   401
     else:
         return jsonify({"error": "Authentication token missing"}),   401
-
-
-
-
-    
-
-# @app.route("/test_token", methods=["POST"])
-# def test_token():
-#     auth_header = request.headers.get('Authorization')
-#     if auth_header:
-#         if auth_header.startswith('Bearer '):
-#             token = auth_header[7:]  # Remove 'Bearer ' prefix
-#             print(f"Received Authorization header: {auth_header}")
-#             print(f"Extracted token: {token}")
-            
-#             # Call the get_user_id_from_jwt function for debugging
-#             try:
-#                 user_id = get_user_id_from_jwt(token)
-#                 print(f"User ID extracted from token: {user_id}")
-#                 return jsonify({"message": f"User ID: {user_id}"}),  200
-#             except Exception as e:
-#                 print(f"Failed to extract user ID from token: {e}")
-#                 return jsonify({"error": "Failed to extract user ID from token"}),   401
-#         else:
-#             return jsonify({"error": "Invalid Authorization header format"}),   401
-#     else:
-#         return jsonify({"error": "Authentication token missing"}),   401
 
 
 @app.route("/items/<id>.json")
@@ -200,7 +160,6 @@ def item_update(id):
     user_id = get_user_id_from_jwt(token)
     try:
         
-        logger.debug(f"Form data received: {request.form}")
         name = request.form.get("name")
         brand = request.form.get("brand")
         size = request.form.get("size")
@@ -209,22 +168,15 @@ def item_update(id):
         category_id = request.form.get("category_id")
 
         image = request.files.get("image")
-        logger.debug(f"Image file received: {image}")
-
-        logger.debug(f"Form data received after: {request.form}")
-        
         # Call the items_update_by_id function with the provided parameters
         updated_item = db.items_update_by_id(id, name, brand, size, color, fit, category_id, image)
         
         if updated_item:
-            logger.info(f"Item updated successfully: {updated_item}")
             return jsonify({"message": "Item updated successfully"})
         else:
-            logger.error("Failed to update item")
             return jsonify({"error": "Failed to update item"}), 500
     except Exception as e:
         # Handle exceptions
-        logger.exception("Exception occurred while updating item")
         return jsonify({"error": str(e)}), 500
 
 
@@ -356,7 +308,7 @@ def allowed_file(filename):
 def image_index():
     return db.images_all()
 
-def images_create(filename, item_id):
+def image_create(filename, item_id):
     try:
         conn = connect_to_db()
         cursor = conn.execute(

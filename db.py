@@ -211,13 +211,10 @@ def items_all_for_user(user_id):
 
 def items_create(name, brand, size, color, fit, category_id, filename, filepath, user_id):
     # Log the incoming token for debugging purposes
-    logging.info('Incoming user ID: %s', user_id)
 
     conn = connect_to_db()
 
     # Now use user_id and decoded_token separately without decoding again
-    logging.info('Creating item with parameters: name=%s, brand=%s, size=%s, color=%s, fit=%s, category_id=%s, user_id=%s, filename=%s, filepath=%s',
-                 name, brand, size, color, fit, category_id, user_id, filename, filepath)
 
     try:
         # Insert item data into the items table
@@ -255,11 +252,6 @@ def items_create(name, brand, size, color, fit, category_id, filename, filepath,
         if conn:
             conn.close()
 
-
-
-
-
-
 def items_find_by_id(id):
     conn = connect_to_db()
     row = conn.execute(
@@ -276,7 +268,6 @@ def items_update_by_id(id, name, brand, size, color, fit, category_id, image,):
     try:
         # Begin a transaction
         conn.execute("BEGIN TRANSACTION;")
-        print(f"data received: {image}")
         # Update item details in the items table
         cursor = conn.execute(
             """
@@ -288,20 +279,12 @@ def items_update_by_id(id, name, brand, size, color, fit, category_id, image,):
         )
 
         affected_rows = cursor.rowcount
-        print(f"{affected_rows} rows were updated.")
 
         # Now, retrieve the updated row
         cursor.execute("SELECT * FROM items WHERE id = ?", (id,))
         updated_row = cursor.fetchone()
 
         # Print the updated row
-        if updated_row:
-            print("Updated row contents:", updated_row)
-        else:
-            print("No row found with the provided ID.")
-
-            import pdb; pdb.set_trace()
-
 
         # If a new image is provided, update or add it to the images table
         if image:
@@ -342,7 +325,7 @@ def items_update_by_id(id, name, brand, size, color, fit, category_id, image,):
 
 def items_destroy_by_id(id):
     conn = connect_to_db()
-    row = conn.execute(
+    conn.execute(
         """
         DELETE from items
         WHERE id = ?
@@ -496,27 +479,27 @@ def images_all():
   ).fetchall()
   return [dict(row) for row in rows]
 
-def images_create(filename, filepath, item_id):
-    try:
-        conn = connect_to_db()
-        cursor = conn.execute(
-            """
-            INSERT INTO images (filename, filepath, item_id)
-            VALUES (?, ?, ?)
-            RETURNING *
-            """,
-            (filename, filepath, item_id),
-        )
+# def images_create(filename, filepath, item_id):
+#     try:
+#         conn = connect_to_db()
+#         cursor = conn.execute(
+#             """
+#             INSERT INTO images (filename, filepath, item_id)
+#             VALUES (?, ?, ?)
+#             RETURNING *
+#             """,
+#             (filename, filepath, item_id),
+#         )
 
-        inserted_row = cursor.fetchone()
-        conn.commit()
-        return dict(inserted_row) if inserted_row else None
-    except Exception as e:
-        logging.error(f"Error inserting image into database: {e}")
-        conn.rollback()  # Roll back the transaction in case of error
-        return None
-    finally:
-        conn.close()
+#         inserted_row = cursor.fetchone()
+#         conn.commit()
+#         return dict(inserted_row) if inserted_row else None
+#     except Exception as e:
+#         logging.error(f"Error inserting image into database: {e}")
+#         conn.rollback()  # Roll back the transaction in case of error
+#         return None
+#     finally:
+#         conn.close()
 
 def images_destroy_by_id(id):
     conn = connect_to_db()
